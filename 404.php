@@ -19,7 +19,7 @@ get_header(); ?>
 			            <h1 class="font-theme">404</h1>
 			            <p><?php _e('抱歉，没有你要找的内容...','i_theme') ?></p>
                       	<div style="margin-top: 30px">
-							<a class="btn-home" href="<?php bloginfo('url'); ?>"><?php _e('返回首页','i_theme') ?></a>
+							<a class="btn-home" href="<?php echo esc_url(home_url('/')); ?>"><?php _e('返回首页','i_theme') ?></a>
                         </div>
 			        </section>
 				</div>

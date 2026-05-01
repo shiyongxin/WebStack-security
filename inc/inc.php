@@ -6,8 +6,8 @@
  * @Author URI: https://www.iowen.cn/
  * @Date: 2019-02-22 21:26:02
  * @LastEditors: iowen
- * @LastEditTime: 2024-07-30 23:22:56
- * @FilePath: /WebStack/inc/inc.php
+ * @LastEditTime: 2023-02-20 21:38:08
+ * @FilePath: \WebStack\inc\inc.php
  * @Description: 
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -26,7 +26,7 @@ require_once get_theme_file_path() .'/inc/frame/cs-framework.php';
 require_once get_theme_file_path() .'/inc/register.php';
 require_once get_theme_file_path() .'/inc/post-type.php';
 require_once get_theme_file_path() .'/inc/fav-content.php';
-require_once get_theme_file_path() .'/inc/ajax.php';
+// require_once get_theme_file_path() .'/inc/img-upload.php'; // Disabled for security reasons - functionality moved to ajax.php
 
 
 add_action('after_setup_theme', 'my_theme_setup');
@@ -50,9 +50,16 @@ add_filter( 'request', 'my_author' );
 function my_author( $query_vars ) {
 	if ( array_key_exists( 'author_name', $query_vars ) ) {
 		global $wpdb;
-		$author_id = $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key='first_name' AND meta_value = %s", $query_vars['author_name'] ) );
+		$author_name = sanitize_text_field($query_vars['author_name']);
+		// 使用wpdb的prepare确保SQL参数化，防止SQL注入
+		$author_id = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key='first_name' AND meta_value = %s LIMIT 1",
+				$author_name
+			)
+		);
 		if ( $author_id ) {
-			$query_vars['author'] = $author_id;
+			$query_vars['author'] = absint($author_id);
 			unset( $query_vars['author_name'] );
 		}
 	}
@@ -199,12 +206,12 @@ function left_admin_footer_text($text) {
 
 function io_head_favicon(){
     if (io_get_option('favicon','')) {
-        echo "<link rel='shortcut icon' href='" . io_get_option('favicon','') . "'>";
+        echo "<link rel='shortcut icon' href='" . esc_url(io_get_option('favicon','')) . "'>";
     } else {
-        echo "<link rel='shortcut icon' href='" . home_url('/favicon.ico') . "'>";
+        echo "<link rel='shortcut icon' href='" . esc_url(home_url('/favicon.ico')) . "'>";
     }
     if (io_get_option('apple_icon','')) {
-        echo "<link rel='apple-touch-icon' href='" . io_get_option('apple_icon','') . "'>";
+        echo "<link rel='apple-touch-icon' href='" . esc_url(io_get_option('apple_icon','')) . "'>";
     }
 }
 add_action('admin_head', 'io_head_favicon');
@@ -395,14 +402,33 @@ register_deactivation_hook( __FILE__, 'disable_embeds_flush_rewrite_rules' );
 add_action('wp_head','modify_css');
 function modify_css(){
 	if (io_get_option("custom_css")) {
-		$css = substr(io_get_option("custom_css"), 0);
-		echo "<style>" . $css . "</style>";
+		$css = io_get_option("custom_css");
+		// Strip dangerous CSS properties that could be used for XSS
+		$css = preg_replace('/expression\s*\(/i', ' disallowed(', $css);
+		$css = preg_replace('/behavior\s*:/i', 'disallowed:', $css);
+		$css = preg_replace('/javascript:/i', 'disallowed:', $css);
+		$css = preg_replace('/binding\s*:/i', 'disallowed:', $css);
+		$css = preg_replace('/@import/i', ' disallowed_at_import', $css);
+		$css = preg_replace('/url\s*\(/i', 'disallowed_url(', $css);
+		// Block data: URLs which can be used for XSS
+		$css = preg_replace('/data:/i', 'disallowed_data:', $css);
+		// Block filter and transform with data URLs
+		$css = preg_replace('/filter\s*:/i', 'disallowed_filter:', $css);
+		$css = preg_replace('/transform\s*:/i', 'disallowed_transform:', $css);
+		// Remove any remaining dangerous protocols
+		$css = preg_replace('/[\x00-\x1f]/', '', $css);
+		echo '<style id="io-custom-css">' . $css . '</style>';
 	}
 }
 function modify_head_js(){
 	if (io_get_option("code_head_js",'')) {
 		$js = io_get_option("code_head_js");
-		echo $js;
+		// Basic sanitization for JS - remove dangerous patterns
+		$js = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $js);
+		$js = preg_replace('/javascript:/i', '', $js);
+		$js = preg_replace('/vbscript:/i', '', $js);
+		$js = preg_replace('/data:/i', '', $js);
+		echo wp_kses_post($js);
 	}
 }
 add_action('wp_head','modify_head_js');
@@ -521,7 +547,7 @@ new iconfont();
  
  
 add_filter('pre_get_avatar_data', function($args, $id_or_email){
-    $gravatar_cdn = io_get_option('gravatar','chinayes');
+    $gravatar_cdn = io_get_option('gravatar','geekzu');
     if($gravatar_cdn=='gravatar'){
         return $args;
     }
@@ -584,14 +610,11 @@ add_filter('pre_get_avatar_data', function($args, $id_or_email){
         case "chinayes":
             $url    = '//gravatar.wp-china-yes.net/avatar/'.$email_hash;
             break;
-        case "iocdn":
-            $url    = '//cdn.iocdn.cc/avatar/'.$email_hash;
-            break;
-        case "qiniu":
-            $url    = '//dn-qiniu-avatar.qbox.me/avatar/'.$email_hash;
+        case "geekzu":
+            $url    = '//sdn.geekzu.org/avatar/'.$email_hash;
             break;
         default:
-            $url    = '//gravatar.wp-china-yes.net/avatar/'.$email_hash;
+            $url    = '//sdn.geekzu.org/avatar/'.$email_hash;
     }
 
     $url_args    = array_filter([
@@ -703,112 +726,7 @@ function io_login_footer(){
     </div>';
 }
 
-/**
- * 获取当前用户的等级
- * @return int
- */
-function io_get_user_level() {
-    // 判断有没有登陆
-    if (is_user_logged_in()) {
-        // 判断是不是管理员
-        if (current_user_can('manage_options')) {
-            return 10;
-        } else {
-            return 2;
-        }
-    } else {
-        return 0;
-    }
-}
-/**
- * 判断是否可见
- * @param $val 0所有人 2登录可见 10管理员可见
- * @return bool
- */
-function io_is_visible($val) {
-    if (empty($val)) {
-        $val = 0;
-    }
-    if($val == '1'){
-        $val = 10;
-    }
-    $val = intval($val);
-    $level = io_get_user_level();
-    
-    if( $level >= $val){
-        return 1;
-    }else{
-        if($level ===0 && $val === 2){
-            return 2;
-        }
-        return 0;
-    }
-}
 
-
-/**
- * 获取简介 
- * @param int $count
- * @param string $meta_key
- * @param string $trimmarker
- * @return string
- */
-function io_get_excerpt($count = 90,$meta_key = '_seo_desc', $trimmarker = '...', $post=''){
-    if(''===$post){
-        global $post;
-    }
-    $excerpt = '';
-    if (!($excerpt = get_post_meta($post->ID, $meta_key, true))) { 
-        if (!empty($post->post_excerpt)) {
-            $excerpt = $post->post_excerpt;
-        } else {
-            $excerpt = $post->post_content;
-        }
-    }
-    $excerpt = trim(str_replace(array("\r\n", "\r", "\n", "　", " "), " ", str_replace("\"", "'", strip_tags(strip_shortcodes($excerpt)))));
-    $excerpt = mb_strimwidth(strip_tags($excerpt), 0, $count, $trimmarker);
-    return $excerpt;
-}
-/**
- * 获取特色图地址
- */
-function io_theme_get_thumb($post = null){
-	if( $post === null ){
-        global $post;
-    }
-    $post_thumbnail_src = get_post_meta($post->ID, '_thumbnail', true);
-    if(!empty($post_thumbnail_src)){
-        return $post_thumbnail_src;
-    }
-	if( has_post_thumbnail() ){    //如果有特色缩略图，则输出缩略图地址
-		$thumbnail_src = wp_get_attachment_image_src(get_post_thumbnail_id($post->ID),'full');
-		$post_thumbnail_src = $thumbnail_src [0];
-	} else {
-		$post_thumbnail_src = '';
-		$strResult = io_get_post_first_img(true);
-		if(!empty($strResult[1][0])){
-			$post_thumbnail_src = $strResult[1][0];   //获取该图片 src
-		}
-    }
-    return $post_thumbnail_src;
-}
-
-/**
- * 获取/输出缩略图地址
- */
-function io_get_post_first_img($is_array = false){ 
-    global $post; 
-    $output = preg_match_all('/<img.+src=[\'"]([^\'"]+)[\'"].*>/i', $post->post_content, $strResult);
-    if($is_array)
-        return $strResult;
-    else{
-        if(!empty($strResult[1][0])){
-			return $strResult[1][0];  
-		}else{	
-            return null;
-		}
-    }
-}
 /**
  * 美化Wordpress登录页 By 一为
  * 原文地址：https://www.iowen.cn/chundaimameihuawordpressmorendengluye/

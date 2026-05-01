@@ -172,7 +172,7 @@ class CSFramework extends CSFramework_Abstract {
       if( is_array( $decode_string ) ) {
         return $decode_string;
       }
-      $add_errors[] = $this->add_settings_error( esc_html__( '成功导入备份选项。', 'cs-framework' ), 'updated' );
+      $add_errors[] = $this->add_settings_error( esc_html__( '导入失败：数据格式无效。', 'cs-framework' ), 'error' );
     }
 
     // reset all options

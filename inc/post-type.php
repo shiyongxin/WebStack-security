@@ -6,8 +6,8 @@
  * @Author URI: https://www.iowen.cn/
  * @Date: 2020-02-22 21:26:05
  * @LastEditors: iowen
- * @LastEditTime: 2024-07-30 21:12:27
- * @FilePath: /WebStack/inc/post-type.php
+ * @LastEditTime: 2021-12-20 23:53:13
+ * @FilePath: \WebStack\inc\post-type.php
  * @Description: 
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -132,12 +132,13 @@ function post_type_bulletin() {
 //add_action('created_favorites','save_term_order',10,1);
 add_action('edit_favorites','save_term_order',10,1);
 function save_term_order( $term_id ) {
-	//if (isset($_POST['_term_order'])) {
-   		//update_term_meta( $term_id, '_term_order', $_POST[ '_term_order' ] );
-	//}
-	$ca_menu_id = esc_attr($_POST['ca_ordinal']);
-	if ($ca_menu_id)
-		update_term_meta( $term_id, '_term_order', $ca_menu_id);
+    // 添加 nonce 检查
+    if ( ! isset($_POST['favorites_nonce']) || ! wp_verify_nonce($_POST['favorites_nonce'], 'save_term_order') ) {
+        return;
+    }
+    $ca_menu_id = isset($_POST['ca_ordinal']) ? absint($_POST['ca_ordinal']) : 0;
+    if ($ca_menu_id)
+        update_term_meta( $term_id, '_term_order', $ca_menu_id);
 }
 
 
@@ -171,44 +172,46 @@ function custom_sites_rewrites_init(){
 //此部分功能是生成分类下拉菜单
 add_action('restrict_manage_posts','io_post_type_filter',10,2);
 function io_post_type_filter($post_type, $which){
-    if('sites' !== $post_type){ //这里为自定义文章类型，需修改
-      return; //检查是否是我们需要的文章类型
+    if('sites' !== $post_type){
+      return;
     }
-    $taxonomy_slug     = 'favorites'; //这里为自定义分类法，需修改
+    $taxonomy_slug     = 'favorites';
     $taxonomy          = get_taxonomy($taxonomy_slug);
     $selected          = '';
-    $request_attr      = 'favorites'; //这里为自定义分类法，需修改
+    $request_attr      = 'favorites';
     if ( isset($_REQUEST[$request_attr] ) ) {
-      $selected = $_REQUEST[$request_attr];
+      $selected = sanitize_text_field($_REQUEST[$request_attr]);
     }
     wp_dropdown_categories(array(
-      'show_option_all' =>  __("所有{$taxonomy->label}"),
+      'show_option_all' =>  esc_html__("所有{$taxonomy->label}", 'i_theme'),
       'taxonomy'        =>  $taxonomy_slug,
       'name'            =>  $request_attr,
       'orderby'         =>  'name',
       'selected'        =>  $selected,
       'hierarchical'    =>  true,
       'depth'           =>  5,
-      'show_count'      =>  true, // Show number of post in parent term
-      'hide_empty'      =>  false, // Don't show posts w/o terms
+      'show_count'      =>  true,
+      'hide_empty'      =>  false,
     ));
 }
 //此部分功能是列出指定分类下的所有文章
-add_filter('parse_query','io_work_convert_restrict'); 
-function io_work_convert_restrict($query) {  
-    global $pagenow;  
-    global $typenow;  
-    if ($pagenow=='edit.php') {  
-        $filters = get_object_taxonomies($typenow);  
-        foreach ($filters as $tax_slug) {  
-            $var = &$query->query_vars[$tax_slug];  
-            if ( isset($var) && $var>0) {  
-                $term = get_term_by('id',$var,$tax_slug);  
-                $var = $term->slug;  
-            }  
-        }  
-    }  
-    return $query;  
+add_filter('parse_query','io_work_convert_restrict');
+function io_work_convert_restrict($query) {
+    global $pagenow;
+    global $typenow;
+    if ($pagenow=='edit.php') {
+        $filters = get_object_taxonomies($typenow);
+        foreach ($filters as $tax_slug) {
+            $var = &$query->query_vars[$tax_slug];
+            if ( isset($var) && $var>0) {
+                $term = get_term_by('id', absint($var), $tax_slug);
+                if ($term !== false) {
+                    $var = $term->slug;
+                }
+            }
+        }
+    }
+    return $query;
 } 
 
 /**
@@ -223,28 +226,19 @@ function io_ordinal_manage_posts_columns($columns){
 	$columns['visible']    = '可见性'; 
 	return $columns;
 }
-function io_ordinal_manage_posts_custom_column($column_name,$id){ 
+function io_ordinal_manage_posts_custom_column($column_name,$id){
 	switch( $column_name ) :
 		case 'link': {
-			echo get_post_meta($id, '_sites_link', true);
+			echo esc_url(get_post_meta($id, '_sites_link', true));
 			break;
 		}
 		case 'ordinal': {
-			echo get_post_meta($id, '_sites_order', true);
+			echo esc_html(get_post_meta($id, '_sites_order', true));
 			break;
 		}
 		case 'visible': {
-			switch (get_post_meta($id, '_visible', true)) {
-				case '1':
-					echo "管理员";
-					break;
-				case '2':
-					echo "登陆用户";
-					break;
-				default:
-					echo "所有人";
-					break;
-			}
+			$visible = get_post_meta($id, '_visible', true);
+			echo $visible ? esc_html__('管理员', 'i_theme') : esc_html__('所有人', 'i_theme');
 			break;
 		}
 	endswitch;
@@ -260,10 +254,10 @@ function io_id_manage_tags_columns($columns){
 }
 function io_id_manage_tags_custom_column($null,$column_name,$id){
     if ($column_name == 'ca_ordinal') {
-        echo get_term_meta($id, '_term_order', true);
+        echo esc_html(get_term_meta($id, '_term_order', true));
     }
     if ($column_name == 'id') {
-        echo $id;
+        echo esc_html($id);
     }
 }
 
@@ -339,27 +333,24 @@ function io_add_quick_edit($column_name, $post_type) {
 		  	</div>
 	  	</fieldset>';
 	}
+	// 添加 nonce 字段
+	wp_nonce_field('quick_edit_sites', 'quick_edit_nonce');
 }
 
 
 //保存和更新数据
 add_action('save_post', 'io_save_quick_edit_data');
 function io_save_quick_edit_data($post_id) {
-    //如果是自动保存日志，并非我们所提交数据，那就不处理
     if ( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE )
         return $post_id;
-    // 验证权限，'sites' 为文章类型，默认为 'post' ,这里为我自定义的文章类型'sites'
     if (isset($_POST['post_type']) && 'sites' ==  $_POST['post_type'] ) {
         if ( !current_user_can( 'edit_page', $post_id ) )
             return $post_id;
-    } 
-	$post = get_post($post_id); 
-	// 'ordinal' 与前方代码对应
-    if (isset($_POST['ordinal']) && ($post->post_type != 'revision')) {
-        $left_menu_id = esc_attr($_POST['ordinal']);
-        if ($left_menu_id)
-			update_post_meta( $post_id, '_sites_order', $left_menu_id);// ‘_sites_order’为自定义字段
-    } 
+    }
+    // 添加 nonce 检查
+    if ( ! isset($_POST['quick_edit_nonce']) || ! wp_verify_nonce($_POST['quick_edit_nonce'], 'quick_edit_sites') ) {
+        return $post_id;
+    }
 }
 
 //输出js

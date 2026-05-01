@@ -117,7 +117,7 @@ if ($police_icp = io_get_option('police_icp')) {
 <?php endif; ?>
 <?php wp_footer(); ?>
 <!-- 自定义代码 -->
-<?php echo io_get_option('code_2_footer');?>
+<?php echo wp_kses_post(io_get_option('code_2_footer')); ?>
 <!-- end 自定义代码 -->
 </body>
 </html>

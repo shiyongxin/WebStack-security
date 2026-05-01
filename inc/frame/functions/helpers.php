@@ -68,7 +68,8 @@ if ( ! function_exists( 'cs_add_element' ) ) {
  */
 if ( ! function_exists( 'cs_encode_string' ) ) {
   function cs_encode_string( $string ) {
-    return serialize( $string );
+    // Use JSON instead of serialize for better security
+    return json_encode( $string );
   }
 }
 
@@ -82,7 +83,16 @@ if ( ! function_exists( 'cs_encode_string' ) ) {
  */
 if ( ! function_exists( 'cs_decode_string' ) ) {
   function cs_decode_string( $string ) {
-    return unserialize( $string );
+    // Use JSON instead of unserialize for better security
+    $decoded = json_decode( $string, true );
+    if ( json_last_error() === JSON_ERROR_NONE ) {
+      return $decoded;
+    }
+    // Fallback to unserialize only if JSON fails, but with basic validation
+    if ( is_string($string) && strlen($string) < 10000 && !preg_match('/[oc]:[0-9]+:/i', $string) ) {
+      return unserialize( $string );
+    }
+    return false;
   }
 }
 

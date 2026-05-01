@@ -5,12 +5,19 @@ Template Name: 投稿模板
 
 get_header(); 
 
+$categories= get_categories(array(
+  'taxonomy'     => 'favorites',
+  'meta_key'     => '_term_order',
+  'orderby'      => 'meta_value_num',
+  'order'        => 'desc',
+  'hide_empty'   => 0,
+  )
+); 
 include( 'templates/header-nav.php' );
 ?>
 <div class="main-content page">
-<?php include( 'templates/header-banner.php' ); ?>
     <div class="container">
-	    <div class="row mt-5 mt-sm-0">
+	    <div class="row">
 	    	<div class="col-12 mx-auto">
                 <div class="panel panel-default">
                     <h1 class="h2"><?php echo get_the_title() ?></h1>
@@ -27,7 +34,7 @@ include( 'templates/header-nav.php' );
                 </div>
                 <div class="panel panel-tougao">
                     <h1 class="h2"><?php _e('添加网站','i_theme') ?></h1>
-                    <form id="tougao" class="io-tougao mb-4" method="post" action="<?php echo $_SERVER["REQUEST_URI"]?>">
+                    <form id="tougao" class="io-tougao mb-4" method="post" action="<?php echo esc_url(home_url('/contribute/')); ?>">
                         <div style="text-align: left; padding-top: 10px;">
                             <label for="tougao_sites_ico"><?php _e('网站图标:','i_theme') ?></label>
                             <input type="hidden" value="" id="tougao_sites_ico" name="tougao_sites_ico" />
@@ -109,9 +116,20 @@ include( 'templates/header-nav.php' );
 	    </div>
     </div>
     
-<script> 
+<script>
     var verification = Math.floor(Math.random()*(9999-1000+1)+1000);
     $('#verification-text').text(verification);
+
+    // 生成CSRF token
+    function ioGenerateNonce() {
+        return '<?php echo wp_create_nonce('io_contribute_nonce'); ?>';
+    }
+    function ioImgUploadNonce() {
+        return '<?php echo wp_create_nonce('io_img_upload_nonce'); ?>';
+    }
+    function ioImgRemoveNonce() {
+        return '<?php echo wp_create_nonce('io_img_remove_nonce'); ?>';
+    }
 
     $('#tougao').submit(function() {
         if($('#inputVeri').val() != verification){
@@ -122,7 +140,7 @@ include( 'templates/header-nav.php' );
     	    url: theme.ajaxurl,
             type:     'POST',
             dataType: 'json',
-            data:     $(this).serialize() + "&action=contribute_post", 
+            data:     $(this).serialize() + "&action=contribute_post&io_nonce=" + ioGenerateNonce(),
         }).done(function (result) {
             if(result.status == 1){
                 verification = Math.floor(Math.random()*(9999-1000+1)+1000);
@@ -174,6 +192,7 @@ include( 'templates/header-nav.php' );
             var formData = new FormData();
             formData.append('files', file.files[0]);
             formData.append('action','img_upload');
+            formData.append('nonce', ioImgUploadNonce());
     	    $.ajax({
     	        url: theme.ajaxurl,
                 type: 'POST',
@@ -210,7 +229,8 @@ include( 'templates/header-nav.php' );
             dataType: 'json',
             data: {
 				action: "img_remove",
-				id: $(this).data("id")
+				id: $(this).data("id"),
+				nonce: ioImgRemoveNonce()
 			}
         }).done(function (result) {
             showAlert(result);

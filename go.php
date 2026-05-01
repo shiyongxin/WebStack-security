@@ -1,13 +1,61 @@
-<?php 
-include "./wp-load.php";
-$url = $_GET['url'];
-$a = '';
-if( $a==$url ) {
-	$b = "";
-// echo 'true';
-} else {
-	$b = $url;
-	$b = base64_decode($b);
+<?php
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+date_default_timezone_set('Asia/Shanghai');
+
+$url = isset($_GET['url']) ? $_GET['url'] : '';
+$b = '';
+
+if ( ! empty($url) ) {
+    $decoded_url = base64_decode($url);
+
+    if ( filter_var($decoded_url, FILTER_VALIDATE_URL) ) {
+        $parsed = parse_url($decoded_url);
+        $scheme = isset($parsed['scheme']) ? strtolower($parsed['scheme']) : '';
+        $host = isset($parsed['host']) ? strtolower($parsed['host']) : '';
+
+        $allowed_protocols = array('http', 'https');
+
+        // Check if host is an internal IP using ip2long
+        $host_ip = gethostbyname($host);
+        $is_internal = false;
+
+        // Block localhost, loopback, and link-local addresses
+        $blocked_patterns = array(
+            '/^127\./',                           // 127.0.0.0/8 (loopback)
+            '/^10\./',                            // 10.0.0.0/8 (private)
+            '/^172\.(1[6-9]|2[0-9]|3[0-1])\./',  // 172.16.0.0/12 (private)
+            '/^192\.168\./',                      // 192.168.0.0/16 (private)
+            '/^169\.254\./',                      // 169.254.0.0/16 (link-local)
+            '/^0\./',                             // 0.0.0.0/8
+            '/^224\./',                           // 224.0.0.0/4 (multicast)
+            '/^240\./',                           // 240.0.0.0/4 (reserved)
+            '/^::1$/',                            // IPv6 loopback
+            '/^fe80:/i',                          // IPv6 link-local
+            '/^fc00:/i',                          // IPv6 unique local
+            '/^fd00:/i',                          // IPv6 unique local
+        );
+
+        foreach ( $blocked_patterns as $pattern ) {
+            if ( preg_match($pattern, $host) || preg_match($pattern, $host_ip) ) {
+                $is_internal = true;
+                break;
+            }
+        }
+
+        // Double-check: if host resolves to a private IP, also block
+        if ( !$is_internal && $host_ip != $host ) {
+            foreach ( $blocked_patterns as $pattern ) {
+                if ( preg_match($pattern, $host_ip) ) {
+                    $is_internal = true;
+                    break;
+                }
+            }
+        }
+
+        if ( in_array($scheme, $allowed_protocols, true) && ! $is_internal ) {
+            $b = $decoded_url;
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -17,7 +65,7 @@ if( $a==$url ) {
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width,height=device-height, initial-scale=1.0, user-scalable=no" />
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta http-equiv="refresh" content="0.1;url=<?php echo $b; ?>">
+<meta http-equiv="refresh" content="0.1;url=<?php echo esc_url($b); ?>">
 <meta name="robots" content="noindex,follow">
 <title><?php _e('加载中','i_theme') ?></title>
 
